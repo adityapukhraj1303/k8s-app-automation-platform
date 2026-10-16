@@ -1,0 +1,63 @@
+---
+# ── Role: docker/tasks/main.yml ───────────────────────────────────────────────
+# Installs and configures Docker Engine on target hosts.
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+
+- name: Install Docker CE
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Add user to docker group
+  user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+
+- name: Configure Docker daemon
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "100m",
+          "max-file": "3"
+        },
+        "storage-driver": "overlay2",
+        "exec-opts": ["native.cgroupdriver=systemd"],
+        "metrics-addr": "0.0.0.0:9323",
+        "experimental": true
+      }
+    mode: "0644"
+
+- name: Enable and start Docker
+  systemd:
+    name: docker
+    enabled: true
+    state: restarted
+    daemon_reload: true
+
+- name: Verify Docker installation
+  command: docker info
+  register: docker_info
+  changed_when: false
+
+- name: Docker installed successfully
+  debug:
+    msg: "Docker is running on {{ inventory_hostname }}"

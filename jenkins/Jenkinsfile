@@ -1,0 +1,323 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Jenkins CI/CD Pipeline — Kubernetes App Automation Platform
+// Pipeline: Build → Test → Security Scan → Push to ECR → Deploy to K8s
+// ─────────────────────────────────────────────────────────────────────────────
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: agent
+spec:
+  serviceAccountName: jenkins-sa
+  containers:
+    - name: docker
+      image: docker:24-dind
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+    - name: kubectl
+      image: bitnami/kubectl:1.29
+      command: ['sleep', 'infinity']
+    - name: ansible
+      image: cytopia/ansible:latest
+      command: ['sleep', 'infinity']
+    - name: python
+      image: python:3.11-slim
+      command: ['sleep', 'infinity']
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+"""
+        }
+    }
+
+    // ── Environment Variables ─────────────────────────────────────────────────
+    environment {
+        APP_NAME         = "k8s-platform-app"
+        AWS_REGION       = "ap-south-1"
+        AWS_ACCOUNT_ID   = credentials("aws-account-id")
+        ECR_REGISTRY     = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        ECR_REPOSITORY   = "${ECR_REGISTRY}/${APP_NAME}"
+        IMAGE_TAG        = "${BUILD_NUMBER}-${GIT_COMMIT[0..6]}"
+        K8S_NAMESPACE    = "k8s-platform"
+        EC2_INSTANCE_TYPE = "t3.small"
+        KUBECONFIG       = credentials("kubeconfig")
+        ANSIBLE_HOST_KEY_CHECKING = "False"
+    }
+
+    // ── Pipeline Options ──────────────────────────────────────────────────────
+    options {
+        buildDiscarder(logRotator(numToKeepStr: "10"))
+        timeout(time: 30, unit: "MINUTES")
+        timestamps()
+        ansiColor("xterm")
+    }
+
+    // ── Triggers ──────────────────────────────────────────────────────────────
+    triggers {
+        githubPush()
+        pollSCM("H/5 * * * *")    // Poll every 5 minutes as fallback
+    }
+
+    stages {
+
+        // ── Stage 1: Checkout ─────────────────────────────────────────────────
+        stage("🔁 Checkout") {
+            steps {
+                echo "Checking out source code from GitHub..."
+                checkout scm
+                sh "git log -1 --format='%H %s %an' | tee git-info.txt"
+                archiveArtifacts artifacts: "git-info.txt", allowEmptyArchive: true
+            }
+        }
+
+        // ── Stage 2: Unit Tests ───────────────────────────────────────────────
+        stage("🧪 Unit Tests") {
+            steps {
+                container("python") {
+                    echo "Running unit tests..."
+                    sh """
+                        pip install -r app/requirements.txt pytest pytest-cov --quiet
+                        cd app
+                        python -m pytest tests/ -v \
+                            --cov=app \
+                            --cov-report=xml:coverage.xml \
+                            --junitxml=test-results.xml \
+                            || true
+                    """
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: "app/test-results.xml"
+                    publishCoverage adapters: [coberturaAdapter("app/coverage.xml")]
+                }
+            }
+        }
+
+        // ── Stage 3: Docker Build ─────────────────────────────────────────────
+        stage("🐳 Docker Build") {
+            steps {
+                container("docker") {
+                    echo "Building Docker image: ${ECR_REPOSITORY}:${IMAGE_TAG}"
+                    sh """
+                        cd app
+                        docker build \
+                            --build-arg APP_VERSION=${IMAGE_TAG} \
+                            --build-arg BUILD_DATE=\$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+                            --build-arg VCS_REF=\$(git rev-parse --short HEAD) \
+                            --label "build.number=${BUILD_NUMBER}" \
+                            --label "git.commit=${GIT_COMMIT}" \
+                            --tag ${ECR_REPOSITORY}:${IMAGE_TAG} \
+                            --tag ${ECR_REPOSITORY}:latest \
+                            --file Dockerfile \
+                            .
+                    """
+                }
+            }
+        }
+
+        // ── Stage 4: Security Scan ────────────────────────────────────────────
+        stage("🔐 Security Scan") {
+            steps {
+                container("docker") {
+                    echo "Running Trivy vulnerability scan..."
+                    sh """
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            aquasec/trivy:latest image \
+                            --exit-code 0 \
+                            --severity HIGH,CRITICAL \
+                            --format table \
+                            --output trivy-report.txt \
+                            ${ECR_REPOSITORY}:${IMAGE_TAG}
+                        cat trivy-report.txt
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: "trivy-report.txt", allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ── Stage 5: Push to AWS ECR ──────────────────────────────────────────
+        stage("☁️ Push to ECR") {
+            steps {
+                container("docker") {
+                    withAWS(credentials: "aws-credentials", region: "${AWS_REGION}") {
+                        echo "Authenticating with AWS ECR..."
+                        sh """
+                            aws ecr get-login-password --region ${AWS_REGION} | \
+                                docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+                            # Ensure ECR repository exists
+                            aws ecr describe-repositories --repository-names ${APP_NAME} \
+                                --region ${AWS_REGION} 2>/dev/null || \
+                                aws ecr create-repository \
+                                    --repository-name ${APP_NAME} \
+                                    --image-scanning-configuration scanOnPush=true \
+                                    --region ${AWS_REGION}
+
+                            echo "Pushing image: ${ECR_REPOSITORY}:${IMAGE_TAG}"
+                            docker push ${ECR_REPOSITORY}:${IMAGE_TAG}
+                            docker push ${ECR_REPOSITORY}:latest
+
+                            echo "Image pushed successfully to ECR!"
+                            echo "URI: ${ECR_REPOSITORY}:${IMAGE_TAG}"
+                        """
+                    }
+                }
+            }
+        }
+
+        // ── Stage 6: Ansible Environment Config ───────────────────────────────
+        stage("⚙️ Ansible Config") {
+            steps {
+                container("ansible") {
+                    withCredentials([sshUserPrivateKey(credentialsId: "ansible-ssh-key",
+                                                       keyFileVariable: "ANSIBLE_SSH_KEY")]) {
+                        echo "Running Ansible playbook: setup-environment..."
+                        sh """
+                            ansible-playbook \
+                                -i ansible/inventory/hosts.ini \
+                                ansible/playbooks/setup-environment.yml \
+                                --private-key=\${ANSIBLE_SSH_KEY} \
+                                --extra-vars "env=production image_tag=${IMAGE_TAG}" \
+                                -v
+                        """
+                    }
+                }
+            }
+        }
+
+        // ── Stage 7: Deploy to Kubernetes ─────────────────────────────────────
+        stage("🚀 Deploy to K8s") {
+            steps {
+                container("kubectl") {
+                    echo "Deploying to Kubernetes namespace: ${K8S_NAMESPACE}"
+                    sh """
+                        export KUBECONFIG=\${KUBECONFIG}
+
+                        # Apply namespace and config
+                        kubectl apply -f kubernetes/namespace.yaml
+                        kubectl apply -f kubernetes/configmap.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f kubernetes/secret.yaml -n ${K8S_NAMESPACE}
+
+                        # Update image tag in deployment
+                        sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" kubernetes/deployment.yaml
+                        sed -i "s|\\\${AWS_ACCOUNT_ID}|${AWS_ACCOUNT_ID}|g" kubernetes/deployment.yaml
+                        sed -i "s|\\\${AWS_REGION}|${AWS_REGION}|g" kubernetes/deployment.yaml
+
+                        # Apply deployment and services
+                        kubectl apply -f kubernetes/deployment.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f kubernetes/service.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f kubernetes/hpa.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f kubernetes/ingress.yaml -n ${K8S_NAMESPACE}
+
+                        # Wait for rollout to complete
+                        echo "Waiting for deployment rollout..."
+                        kubectl rollout status deployment/k8s-platform-app \
+                            -n ${K8S_NAMESPACE} \
+                            --timeout=300s
+
+                        echo "Deployment successful!"
+                        kubectl get pods -n ${K8S_NAMESPACE} -l app=k8s-platform-app
+                    """
+                }
+            }
+        }
+
+        // ── Stage 8: Post-Deploy Verification ────────────────────────────────
+        stage("✅ Smoke Test") {
+            steps {
+                container("python") {
+                    echo "Running smoke tests against deployed service..."
+                    sh """
+                        pip install requests --quiet
+                        python3 -c "
+import requests, sys, time
+base = 'http://k8s-platform-svc.${K8S_NAMESPACE}.svc.cluster.local'
+endpoints = ['/health', '/ready', '/api/info']
+for ep in endpoints:
+    for attempt in range(3):
+        try:
+            r = requests.get(base + ep, timeout=10)
+            assert r.status_code == 200, f'Got {r.status_code}'
+            print(f'[PASS] {ep} -> {r.status_code}')
+            break
+        except Exception as e:
+            print(f'[RETRY {attempt+1}] {ep}: {e}')
+            time.sleep(5)
+    else:
+        print(f'[FAIL] {ep} - all retries exhausted')
+        sys.exit(1)
+print('All smoke tests passed!')
+"
+                    """
+                }
+            }
+        }
+
+        // ── Stage 9: Ansible Monitoring Setup ────────────────────────────────
+        stage("📊 Configure Monitoring") {
+            when {
+                branch "main"
+            }
+            steps {
+                container("ansible") {
+                    echo "Configuring Prometheus + Grafana via Ansible..."
+                    sh """
+                        ansible-playbook \
+                            -i ansible/inventory/hosts.ini \
+                            ansible/playbooks/configure-monitoring.yml \
+                            --extra-vars "namespace=${K8S_NAMESPACE} app_name=${APP_NAME}" \
+                            -v
+                    """
+                }
+            }
+        }
+
+    }
+
+    // ── Post Actions ──────────────────────────────────────────────────────────
+    post {
+        success {
+            echo "✅ Pipeline completed successfully! Image: ${ECR_REPOSITORY}:${IMAGE_TAG}"
+            slackSend(
+                color: "good",
+                message: "✅ *${APP_NAME}* deployed successfully!\n" +
+                         "Build: #${BUILD_NUMBER} | Image: `${IMAGE_TAG}`\n" +
+                         "Branch: `${GIT_BRANCH}` | Duration: ${currentBuild.durationString}"
+            )
+        }
+        failure {
+            echo "❌ Pipeline failed! Check logs for details."
+            slackSend(
+                color: "danger",
+                message: "❌ *${APP_NAME}* deployment FAILED!\n" +
+                         "Build: #${BUILD_NUMBER} | Branch: `${GIT_BRANCH}`\n" +
+                         "Check: ${BUILD_URL}"
+            )
+            // Rollback on failure
+            container("kubectl") {
+                sh """
+                    echo "Rolling back deployment..."
+                    kubectl rollout undo deployment/k8s-platform-app -n ${K8S_NAMESPACE} || true
+                """
+            }
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

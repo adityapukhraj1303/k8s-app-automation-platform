@@ -1,0 +1,76 @@
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Playbook: configure-monitoring.yml
+# Purpose:  Deploy Prometheus + Grafana to the Kubernetes cluster.
+#           Configures scrape targets, alert rules, and dashboards.
+# Usage:    ansible-playbook -i inventory/hosts.ini playbooks/configure-monitoring.yml
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Configure Prometheus & Grafana Monitoring
+  hosts: k8s_master
+  become: false
+  gather_facts: false
+  vars:
+    monitoring_namespace: monitoring
+    app_namespace: k8s-platform
+    prometheus_version: "v2.51.0"
+    grafana_version: "10.3.0"
+
+  tasks:
+    - name: Create monitoring namespace
+      kubernetes.core.k8s:
+        name: "{{ monitoring_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Deploy Prometheus
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../monitoring/prometheus/prometheus.yaml"
+        state: present
+        namespace: "{{ monitoring_namespace }}"
+
+    - name: Apply Prometheus ConfigMap (scrape config)
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../monitoring/prometheus/prometheus-config.yaml"
+        state: present
+        namespace: "{{ monitoring_namespace }}"
+
+    - name: Deploy Grafana
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../monitoring/grafana/grafana.yaml"
+        state: present
+        namespace: "{{ monitoring_namespace }}"
+
+    - name: Wait for Prometheus to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ monitoring_namespace }}"
+        label_selectors:
+          - app=prometheus
+        field_selectors:
+          - status.phase=Running
+      register: prometheus_pods
+      until: prometheus_pods.resources | length > 0
+      retries: 10
+      delay: 15
+
+    - name: Wait for Grafana to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ monitoring_namespace }}"
+        label_selectors:
+          - app=grafana
+        field_selectors:
+          - status.phase=Running
+      register: grafana_pods
+      until: grafana_pods.resources | length > 0
+      retries: 10
+      delay: 15
+
+    - name: Monitoring setup complete
+      debug:
+        msg: |
+          ✅ Monitoring stack deployed successfully!
+          - Prometheus: http://prometheus.{{ monitoring_namespace }}.svc:9090
+          - Grafana:    http://grafana.{{ monitoring_namespace }}.svc:3000

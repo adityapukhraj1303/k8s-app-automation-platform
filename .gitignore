@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.xml
+.tox/
+
+# Secrets & Credentials (NEVER commit these)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+.env
+.env.*
+*.secret
+credentials
+aws-credentials
+kubeconfig
+.kube/
+
+# Ansible
+ansible/roles/*/files/*.vault
+*.vault
+.vault_pass
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Kubernetes
+# (Don't ignore k8s files - they're part of the project)
+# But ignore generated files:
+*-generated.yaml
+*-patched.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Terraform (if added later)
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Node (if added later)
+node_modules/
+npm-debug.log*

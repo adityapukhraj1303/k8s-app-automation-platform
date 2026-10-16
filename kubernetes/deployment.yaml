@@ -1,0 +1,170 @@
+# ── Deployment ────────────────────────────────────────────────────────────────
+# Runs the Flask app with 3 replicas, rolling updates, health probes, HPA-ready.
+# Image: build locally with `docker build -t k8s-platform-app:latest ./app`
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-platform-app
+  namespace: k8s-platform
+  labels:
+    app: k8s-platform-app
+    version: "1.0.0"
+  annotations:
+    description: "Kubernetes-Based Application Automation Platform"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: k8s-platform-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # One extra pod during rolling update
+      maxUnavailable: 0    # Zero-downtime — never kill before new pod is ready
+  template:
+    metadata:
+      labels:
+        app: k8s-platform-app
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: k8s-platform-sa
+      terminationGracePeriodSeconds: 30
+
+      # ── Security Context ────────────────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+
+      # ── Application Container ───────────────────────────────────────────────
+      containers:
+        - name: k8s-platform-app
+          # Build locally: docker build -t k8s-platform-app:latest ./app
+          # For Minikube: eval $(minikube docker-env) && docker build -t k8s-platform-app:latest ./app
+          image: k8s-platform-app:latest
+          imagePullPolicy: IfNotPresent   # Use local image; set to Always for remote registries
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+
+          # ── Environment (from ConfigMap & Secrets) ──────────────────────────
+          env:
+            - name: APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: k8s-platform-config
+                  key: APP_NAME
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: k8s-platform-config
+                  key: ENVIRONMENT
+            - name: APP_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: k8s-platform-config
+                  key: APP_VERSION
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: k8s-platform-config
+                  key: PORT
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-platform-secrets
+                  key: db-password
+            - name: API_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-platform-secrets
+                  key: api-secret-key
+
+          # ── Health Probes ───────────────────────────────────────────────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            periodSeconds: 5
+            failureThreshold: 20   # Allow up to 100s for startup
+
+          # ── Resource Limits ─────────────────────────────────────────────────
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+
+          # ── Security ────────────────────────────────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Volumes ─────────────────────────────────────────────────────────
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: app-config
+              mountPath: /app/config
+              readOnly: true
+
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: app-config
+          configMap:
+            name: k8s-platform-config
+
+      # ── Pod Scheduling ───────────────────────────────────────────────────────
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - k8s-platform-app
+                topologyKey: kubernetes.io/hostname
+
+---
+# ── ServiceAccount ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-platform-sa
+  namespace: k8s-platform
+  labels:
+    app: k8s-platform-app

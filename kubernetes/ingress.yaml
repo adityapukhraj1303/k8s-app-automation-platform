@@ -1,0 +1,37 @@
+# ── Ingress ───────────────────────────────────────────────────────────────────
+# Exposes the application to external traffic using NGINX Ingress Controller.
+# Configured with TLS termination and standard routing rules.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-platform-ingress
+  namespace: k8s-platform
+  labels:
+    app: k8s-platform-app
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+spec:
+  tls:
+    - hosts:
+        - k8s-platform.example.com
+      secretName: k8s-platform-tls
+  rules:
+    - host: k8s-platform.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: k8s-platform-svc
+                port:
+                  number: 80

@@ -1,0 +1,11 @@
+# ── Namespace ──────────────────────────────────────────────────────────────────
+# Isolates all platform resources from other workloads
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-platform
+  labels:
+    name: k8s-platform
+    managed-by: ansible
+    environment: production
+    app.kubernetes.io/part-of: k8s-app-automation-platform

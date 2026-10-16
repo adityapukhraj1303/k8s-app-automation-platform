@@ -1,0 +1,111 @@
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Playbook: deploy-app.yml
+# Purpose:  Deploy/update the containerized app on Kubernetes via Ansible.
+#           Updates image tag, applies manifests, verifies rollout.
+# Usage:    ansible-playbook -i inventory/hosts.ini playbooks/deploy-app.yml \
+#             --extra-vars "image_tag=42-abc1234 env=production"
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Deploy Application to Kubernetes
+  hosts: k8s_master
+  become: false
+  gather_facts: false
+  vars:
+    namespace: k8s-platform
+    app_name: k8s-platform-app
+    image_tag: "{{ image_tag | default('latest') }}"
+    aws_region: "{{ aws_region | default('ap-south-1') }}"
+    rollout_timeout: 300
+
+  tasks:
+    - name: Authenticate with AWS ECR
+      shell: |
+        aws ecr get-login-password --region {{ aws_region }} | \
+        docker login --username AWS --password-stdin \
+        {{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com
+      no_log: true
+
+    - name: Ensure namespace exists
+      kubernetes.core.k8s:
+        name: "{{ namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Apply ConfigMap
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../kubernetes/configmap.yaml"
+        state: present
+        namespace: "{{ namespace }}"
+
+    - name: Apply Secrets
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../kubernetes/secret.yaml"
+        state: present
+        namespace: "{{ namespace }}"
+      no_log: true
+
+    - name: Update deployment image tag
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ app_name }}"
+            namespace: "{{ namespace }}"
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: "{{ app_name }}"
+                    image: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ app_name }}:{{ image_tag }}"
+
+    - name: Apply Service manifest
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../kubernetes/service.yaml"
+        state: present
+        namespace: "{{ namespace }}"
+
+    - name: Apply HPA manifest
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../kubernetes/hpa.yaml"
+        state: present
+        namespace: "{{ namespace }}"
+
+    - name: Apply Ingress manifest
+      kubernetes.core.k8s:
+        src: "{{ playbook_dir }}/../kubernetes/ingress.yaml"
+        state: present
+        namespace: "{{ namespace }}"
+
+    - name: Wait for deployment rollout
+      command: >
+        kubectl rollout status deployment/{{ app_name }}
+        -n {{ namespace }}
+        --timeout={{ rollout_timeout }}s
+      register: rollout_result
+      changed_when: false
+
+    - name: Verify running pods
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app={{ app_name }}
+        field_selectors:
+          - status.phase=Running
+      register: running_pods
+
+    - name: Show deployment status
+      debug:
+        msg: >
+          Deployment {{ app_name }} complete.
+          Running pods: {{ running_pods.resources | length }}.
+          Image: {{ image_tag }}
+
+    - name: Fail if no pods are running
+      fail:
+        msg: "No running pods found for {{ app_name }}!"
+      when: running_pods.resources | length == 0

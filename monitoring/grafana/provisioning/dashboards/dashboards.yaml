@@ -1,0 +1,12 @@
+# ── Grafana Dashboard Provider ────────────────────────────────────────────────
+apiVersion: 1
+
+providers:
+  - name: "K8s Platform Dashboards"
+    orgId: 1
+    folder: "K8s Platform"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

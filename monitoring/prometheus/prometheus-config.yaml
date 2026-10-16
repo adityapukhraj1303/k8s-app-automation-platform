@@ -1,0 +1,155 @@
+# ── Prometheus ConfigMap ──────────────────────────────────────────────────────
+# Defines scrape configurations for all monitored targets.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s         # Scrape every 15 seconds
+      evaluation_interval: 15s     # Evaluate rules every 15 seconds
+      scrape_timeout: 10s
+      external_labels:
+        cluster: 'k8s-platform-prod'
+        environment: 'production'
+
+    # ── Alertmanager ───────────────────────────────────────────────────────────
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - alertmanager:9093
+
+    # ── Rule Files ─────────────────────────────────────────────────────────────
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    # ── Scrape Configs ─────────────────────────────────────────────────────────
+    scrape_configs:
+      # Prometheus self-monitoring
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Kubernetes API server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+
+      # Kubernetes nodes (kubelet)
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # Kubernetes pods with prometheus.io/scrape=true annotation
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+
+      # k8s-platform application (direct scrape)
+      - job_name: 'k8s-platform-app'
+        static_configs:
+          - targets: ['k8s-platform-svc.k8s-platform.svc.cluster.local:80']
+        metrics_path: /metrics
+        scrape_interval: 10s
+
+      # Node Exporter (per node system metrics)
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets:
+              - '10.0.1.10:9100'
+              - '10.0.1.11:9100'
+              - '10.0.1.12:9100'
+              - '10.0.1.13:9100'
+
+  # ── Alert Rules ────────────────────────────────────────────────────────────
+  alert-rules.yml: |
+    groups:
+      - name: k8s-platform-alerts
+        interval: 30s
+        rules:
+
+          - alert: AppHighCPU
+            expr: rate(process_cpu_seconds_total{job="k8s-platform-app"}[5m]) > 0.8
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage on k8s-platform-app"
+              description: "CPU usage > 80% for more than 5 minutes."
+
+          - alert: AppDown
+            expr: up{job="k8s-platform-app"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "k8s-platform-app is DOWN"
+              description: "Application has been unreachable for 1 minute."
+
+          - alert: PodRestartingFrequently
+            expr: increase(kube_pod_container_status_restarts_total[1h]) > 5
+            for: 0m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.pod }} restarting frequently"
+              description: "Pod has restarted more than 5 times in the last hour."
+
+          - alert: HighMemoryUsage
+            expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage on {{ $labels.pod }}"
+              description: "Memory usage > 85% of limit."
+
+          - alert: NodeDiskPressure
+            expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Node {{ $labels.node }} disk pressure"
+              description: "Node is under disk pressure."

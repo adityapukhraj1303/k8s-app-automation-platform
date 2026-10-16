@@ -1,0 +1,138 @@
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Playbook: setup-environment.yml
+# Purpose:  Bootstrap all cluster nodes with Docker, kubectl, and dependencies.
+#           Runs on both master and worker nodes before deployment.
+# Usage:    ansible-playbook -i inventory/hosts.ini playbooks/setup-environment.yml
+# ─────────────────────────────────────────────────────────────────────────────
+
+- name: Setup Environment - All Nodes
+  hosts: k8s_cluster
+  become: true
+  gather_facts: true
+  vars:
+    docker_version: "24.0"
+    kubectl_version: "1.29.0"
+    aws_cli_version: "2"
+    node_exporter_version: "1.7.0"
+
+  pre_tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install common system packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - unzip
+          - jq
+          - htop
+          - net-tools
+          - python3-pip
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - lsb-release
+        state: present
+
+  roles:
+    - docker
+    - kubernetes
+
+  tasks:
+    - name: Install AWS CLI v2
+      block:
+        - name: Download AWS CLI installer
+          get_url:
+            url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+            dest: /tmp/awscliv2.zip
+            mode: "0644"
+
+        - name: Unzip AWS CLI installer
+          unarchive:
+            src: /tmp/awscliv2.zip
+            dest: /tmp/
+            remote_src: true
+
+        - name: Install AWS CLI
+          command: /tmp/aws/install --update
+          args:
+            creates: /usr/local/bin/aws
+
+    - name: Configure AWS credentials
+      template:
+        src: templates/aws-credentials.j2
+        dest: /root/.aws/credentials
+        mode: "0600"
+      no_log: true
+
+    - name: Install Node Exporter for Prometheus
+      block:
+        - name: Download Node Exporter
+          get_url:
+            url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+            dest: /tmp/node_exporter.tar.gz
+
+        - name: Extract Node Exporter
+          unarchive:
+            src: /tmp/node_exporter.tar.gz
+            dest: /usr/local/bin/
+            extra_opts: ["--strip-components=1"]
+            remote_src: true
+
+        - name: Create Node Exporter systemd service
+          copy:
+            dest: /etc/systemd/system/node-exporter.service
+            content: |
+              [Unit]
+              Description=Prometheus Node Exporter
+              After=network.target
+
+              [Service]
+              User=nobody
+              ExecStart=/usr/local/bin/node_exporter
+              Restart=always
+
+              [Install]
+              WantedBy=multi-user.target
+
+        - name: Enable and start Node Exporter
+          systemd:
+            name: node-exporter
+            enabled: true
+            state: started
+            daemon_reload: true
+
+    - name: Configure system limits for production
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_set: true
+      loop:
+        - { key: "vm.max_map_count", value: "262144" }
+        - { key: "fs.file-max", value: "65536" }
+        - { key: "net.core.somaxconn", value: "65535" }
+
+    - name: Verify environment setup
+      command: "{{ item }}"
+      loop:
+        - docker --version
+        - kubectl version --client
+        - aws --version
+      register: version_checks
+      changed_when: false
+
+    - name: Print version info
+      debug:
+        msg: "{{ item.stdout }}"
+      loop: "{{ version_checks.results }}"
+
+  post_tasks:
+    - name: Environment setup complete
+      debug:
+        msg: "✅ Environment setup complete on {{ inventory_hostname }}"

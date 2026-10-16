@@ -1,0 +1,48 @@
+# ── ConfigMap ─────────────────────────────────────────────────────────────────
+# Non-sensitive application configuration. Injected as environment variables.
+# Managed separately from application code for 12-factor app compliance.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-platform-config
+  namespace: k8s-platform
+  labels:
+    app: k8s-platform-app
+    managed-by: ansible
+data:
+  # ── Application Settings ──────────────────────────────────────────────────
+  APP_NAME: "k8s-automation-platform"
+  APP_VERSION: "1.0.0"
+  ENVIRONMENT: "production"
+  PORT: "5000"
+
+  # ── Logging ───────────────────────────────────────────────────────────────
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+
+  # ── AWS Region ────────────────────────────────────────────────────────────
+  AWS_REGION: "ap-south-1"
+  ECR_REPOSITORY: "k8s-platform-app"
+
+  # ── Gunicorn Settings ─────────────────────────────────────────────────────
+  GUNICORN_WORKERS: "2"
+  GUNICORN_THREADS: "4"
+  GUNICORN_TIMEOUT: "120"
+
+  # ── Config file (mounted as volume) ───────────────────────────────────────
+  app.conf: |
+    [app]
+    name = k8s-automation-platform
+    version = 1.0.0
+    environment = production
+
+    [server]
+    host = 0.0.0.0
+    port = 5000
+    workers = 2
+
+    [monitoring]
+    metrics_enabled = true
+    metrics_path = /metrics
+    health_path = /health
+    ready_path = /ready
