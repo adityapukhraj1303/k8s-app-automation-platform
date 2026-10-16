@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="Kubernetes Application Automation Platform — Production-grade DevOps infrastructure with Docker, Jenkins, Ansible, Prometheus and Grafana."/>
+  <title>K8s Automation Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      margin: 0; padding: 0; box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary:    #080b14;
+      --bg-card:       rgba(255,255,255,0.04);
+      --border:        rgba(255,255,255,0.08);
+      --accent-blue:   #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-cyan:   #06b6d4;
+      --accent-green:  #10b981;
+      --text-primary:  #f1f5f9;
+      --text-muted:    #64748b;
+      --text-sub:      #94a3b8;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Background glow ─────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 20%, rgba(59,130,246,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139,92,246,0.10) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrapper { position: relative; z-index: 1; }
+
+    /* ── Nav ─────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(8,11,20,0.7);
+    }
+
+    .nav-logo {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links { display: flex; gap: 1.5rem; }
+    .nav-links a {
+      color: var(--text-sub);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.78rem;
+      color: var(--accent-green);
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.2);
+      border-radius: 99px;
+      padding: 0.3rem 0.8rem;
+    }
+
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { opacity:1; transform: scale(1); }
+      50%      { opacity:0.4; transform: scale(0.8); }
+    }
+
+    /* ── Hero ────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 6rem 2rem 4rem;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      background: rgba(6,182,212,0.1);
+      border: 1px solid rgba(6,182,212,0.2);
+      border-radius: 99px;
+      padding: 0.35rem 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      background: linear-gradient(135deg, #f1f5f9 30%, var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1.25rem;
+    }
+
+    .hero p {
+      font-size: 1.05rem;
+      color: var(--text-sub);
+      line-height: 1.7;
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+    }
+
+    /* ── Badge row ───────────────────────────────────────── */
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-bottom: 3rem;
+    }
+
+    .badge {
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 0.3rem 0.9rem;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-sub);
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .badge:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+
+    /* ── Stats row ───────────────────────────────────────── */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+      padding: 2rem;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      margin: 0 2rem;
+    }
+
+    .stat { text-align: center; }
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .stat-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+    /* ── Feature cards ───────────────────────────────────── */
+    .section {
+      max-width: 1100px;
+      margin: 5rem auto;
+      padding: 0 2rem;
+    }
+
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .section-sub {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(59,130,246,0.05), transparent 60%);
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+
+    .card:hover {
+      border-color: rgba(59,130,246,0.4);
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+    .card:hover::before { opacity: 1; }
+
+    .card-icon {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .card p {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      line-height: 1.6;
+    }
+
+    .card-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+    }
+
+    .tag-blue   { background: rgba(59,130,246,0.15); color: #93c5fd; }
+    .tag-purple { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+    .tag-green  { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+    .tag-cyan   { background: rgba(6,182,212,0.15);  color: #67e8f9; }
+    .tag-orange { background: rgba(249,115,22,0.15); color: #fdba74; }
+
+    /* ── Pipeline flow ───────────────────────────────────── */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0;
+      padding: 2rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+
+    .pipe-step {
+      flex: 1;
+      min-width: 100px;
+      text-align: center;
+      padding: 1rem 0.5rem;
+      position: relative;
+    }
+
+    .pipe-step:not(:last-child)::after {
+      content: '→';
+      position: absolute;
+      right: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--accent-blue);
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    .pipe-num {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      color: white;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 0.6rem;
+    }
+
+    .pipe-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .pipe-sub {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    /* ── Footer ──────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 3rem 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+
+    footer a { color: var(--accent-blue); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+      .stats { gap: 1.5rem; }
+      .pipe-step:not(:last-child)::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- Nav -->
+  <nav>
+    <span class="nav-logo">⚙️ K8s Platform</span>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#monitoring">Monitoring</a>
+    </div>
+    <div class="status-pill">
+      <span class="dot"></span>
+      All Systems Operational
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <span class="hero-eyebrow">DevOps · 2026</span>
+    <h1>Kubernetes Application<br/>Automation Platform</h1>
+    <p>
+      Production-grade containerized web application deployed with multiple replicas
+      on Linux hosts — automated with Jenkins, Ansible, and monitored via Prometheus + Grafana.
+    </p>
+    <div class="badges">
+      <span class="badge">🐳 Docker</span>
+      <span class="badge">☸️ Kubernetes</span>
+      <span class="badge">🔧 Jenkins</span>
+      <span class="badge">📦 Ansible</span>
+      <span class="badge">🐧 Linux</span>
+      <span class="badge">📊 Prometheus</span>
+      <span class="badge">📈 Grafana</span>
+      <span class="badge">♻️ HPA</span>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value">3+</div>
+      <div class="stat-label">Replicas Deployed</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">0</div>
+      <div class="stat-label">Downtime on Updates</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">90%</div>
+      <div class="stat-label">Manual Work Reduced</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">2→10</div>
+      <div class="stat-label">HPA Replica Range</div>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="section-title">Platform Features</div>
+    <div class="section-sub">End-to-end DevOps infrastructure with industry-standard tooling</div>
+    <div class="cards">
+
+      <div class="card">
+        <span class="card-icon">☸️</span>
+        <h3>Multi-Replica Deployment</h3>
+        <p>Deployed with Kubernetes Deployments, Services, ConfigMaps and Secrets on Linux hosts. Rolling updates ensure zero downtime.</p>
+        <span class="card-tag tag-blue">Kubernetes</span>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">❤️</span>
+        <h3>Health Checks & Autoscaling</h3>
+        <p>Liveness, readiness and startup probes keep pods healthy. HPA auto-scales from 2 to 10 replicas based on CPU and memory.</p>
+        <span class="card-tag tag-green">HPA · Probes</span>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">🤖</span>
+        <h3>Automated CI/CD</h3>
+        <p>Jenkins pipeline automates build, test, image push and deployment. Ansible eliminates manual intervention across all Linux nodes.</p>
+        <span class="card-tag tag-purple">Jenkins · Ansible</span>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">📊</span>
+        <h3>Prometheus Monitoring</h3>
+        <p>Kubernetes service discovery scrapes metrics from all pods. Alert rules fire on high CPU, frequent restarts, and node disk pressure.</p>
+        <span class="card-tag tag-orange">Prometheus</span>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">📈</span>
+        <h3>Grafana Dashboards</h3>
+        <p>Real-time dashboards for request rate, P50/P95/P99 latency, HPA replica count, and CPU/memory utilization per pod.</p>
+        <span class="card-tag tag-cyan">Grafana</span>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">🔐</span>
+        <h3>Production Hardening</h3>
+        <p>ConfigMaps for non-sensitive config, Secrets for credentials, non-root containers, read-only filesystem, and dropped Linux capabilities.</p>
+        <span class="card-tag tag-purple">Security</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- CI/CD Pipeline -->
+  <section class="section" id="pipeline">
+    <div class="section-title">CI/CD Pipeline</div>
+    <div class="section-sub">Automated from git push to Kubernetes deployment</div>
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-num">1</div>
+        <div class="pipe-label">Checkout</div>
+        <div class="pipe-sub">GitHub</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">2</div>
+        <div class="pipe-label">Build</div>
+        <div class="pipe-sub">Docker</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">3</div>
+        <div class="pipe-label">Security Scan</div>
+        <div class="pipe-sub">Trivy</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">4</div>
+        <div class="pipe-label">Push Image</div>
+        <div class="pipe-sub">Registry</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">5</div>
+        <div class="pipe-label">Ansible</div>
+        <div class="pipe-sub">Env Setup</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">6</div>
+        <div class="pipe-label">K8s Deploy</div>
+        <div class="pipe-sub">kubectl</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">7</div>
+        <div class="pipe-label">Monitoring</div>
+        <div class="pipe-sub">Prometheus</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Monitoring -->
+  <section class="section" id="monitoring">
+    <div class="section-title">Monitoring & Observability</div>
+    <div class="section-sub">Built with Prometheus + Grafana to troubleshoot issues in real time</div>
+    <div class="cards">
+      <div class="card">
+        <span class="card-icon">🔴</span>
+        <h3>AppDown Alert</h3>
+        <p>Fires when the application is unreachable for more than 1 minute. Triggers immediate on-call notification.</p>
+        <span class="card-tag tag-orange">Critical</span>
+      </div>
+      <div class="card">
+        <span class="card-icon">🟡</span>
+        <h3>High CPU Alert</h3>
+        <p>Triggers when CPU utilization exceeds 80% for 5 consecutive minutes across any pod in the deployment.</p>
+        <span class="card-tag tag-cyan">Warning</span>
+      </div>
+      <div class="card">
+        <span class="card-icon">🟡</span>
+        <h3>Pod Restart Alert</h3>
+        <p>Fires when any pod restarts more than 5 times within a 1-hour window — indicates a crash loop.</p>
+        <span class="card-tag tag-cyan">Warning</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>Built by <a href="https://github.com/adityapukhraj1303" target="_blank">Aditya Pukhraj</a> &nbsp;·&nbsp;
+    Kubernetes · Docker · Jenkins · Ansible · Linux · Prometheus · Grafana · 2026</p>
+  </footer>
+
+</div>
+</body>
+</html>

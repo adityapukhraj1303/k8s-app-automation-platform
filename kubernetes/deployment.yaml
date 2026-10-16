@@ -1,6 +1,7 @@
 # ── Deployment ────────────────────────────────────────────────────────────────
-# Runs the Flask app with 3 replicas, rolling updates, health probes, HPA-ready.
-# Image: build locally with `docker build -t k8s-platform-app:latest ./app`
+# Runs the nginx static HTML/CSS app with 3 replicas on Linux hosts.
+# Rolling updates with zero downtime. Health probes on /health and /ready.
+# Build: docker build -t k8s-platform-app:latest ./app
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -9,9 +10,9 @@ metadata:
   namespace: k8s-platform
   labels:
     app: k8s-platform-app
-    version: "1.0.0"
+    version: "2.0.0"
   annotations:
-    description: "Kubernetes-Based Application Automation Platform"
+    description: "Kubernetes Application Automation Platform — Static HTML/CSS on nginx"
 spec:
   replicas: 3
   selector:
@@ -26,35 +27,28 @@ spec:
     metadata:
       labels:
         app: k8s-platform-app
-        version: "1.0.0"
+        version: "2.0.0"
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "5000"
+        prometheus.io/port: "80"
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: k8s-platform-sa
       terminationGracePeriodSeconds: 30
 
-      # ── Security Context ────────────────────────────────────────────────────
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1001
-        runAsGroup: 1001
-        fsGroup: 1001
-
-      # ── Application Container ───────────────────────────────────────────────
+      # ── Application Container (nginx) ───────────────────────────────────────
       containers:
         - name: k8s-platform-app
           # Build locally: docker build -t k8s-platform-app:latest ./app
-          # For Minikube: eval $(minikube docker-env) && docker build -t k8s-platform-app:latest ./app
+          # Minikube:      eval $(minikube docker-env) && docker build -t k8s-platform-app:latest ./app
           image: k8s-platform-app:latest
-          imagePullPolicy: IfNotPresent   # Use local image; set to Always for remote registries
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 5000
+              containerPort: 80
               protocol: TCP
 
-          # ── Environment (from ConfigMap & Secrets) ──────────────────────────
+          # ── Environment (from ConfigMap) ────────────────────────────────────
           env:
             - name: APP_NAME
               valueFrom:
@@ -71,28 +65,13 @@ spec:
                 configMapKeyRef:
                   name: k8s-platform-config
                   key: APP_VERSION
-            - name: PORT
-              valueFrom:
-                configMapKeyRef:
-                  name: k8s-platform-config
-                  key: PORT
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: k8s-platform-secrets
-                  key: db-password
-            - name: API_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: k8s-platform-secrets
-                  key: api-secret-key
 
           # ── Health Probes ───────────────────────────────────────────────────
           livenessProbe:
             httpGet:
               path: /health
-              port: 5000
-            initialDelaySeconds: 15
+              port: 80
+            initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
@@ -100,7 +79,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /ready
-              port: 5000
+              port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
@@ -109,43 +88,33 @@ spec:
           startupProbe:
             httpGet:
               path: /health
-              port: 5000
+              port: 80
             periodSeconds: 5
-            failureThreshold: 20   # Allow up to 100s for startup
+            failureThreshold: 12   # Allow up to 60s for startup
 
           # ── Resource Limits ─────────────────────────────────────────────────
           resources:
             requests:
-              memory: "128Mi"
-              cpu: "100m"
+              memory: "64Mi"
+              cpu: "50m"
             limits:
-              memory: "256Mi"
-              cpu: "500m"
+              memory: "128Mi"
+              cpu: "200m"
 
-          # ── Security ────────────────────────────────────────────────────────
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
-
-          # ── Volumes ─────────────────────────────────────────────────────────
+          # ── Volume Mounts ───────────────────────────────────────────────────
           volumeMounts:
-            - name: tmp-volume
-              mountPath: /tmp
-            - name: app-config
-              mountPath: /app/config
-              readOnly: true
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
 
       volumes:
-        - name: tmp-volume
+        - name: nginx-cache
           emptyDir: {}
-        - name: app-config
-          configMap:
-            name: k8s-platform-config
+        - name: nginx-run
+          emptyDir: {}
 
-      # ── Pod Scheduling ───────────────────────────────────────────────────────
+      # ── Pod Scheduling: spread pods across nodes ─────────────────────────────
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

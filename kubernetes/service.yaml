@@ -1,6 +1,6 @@
 # ── Service ───────────────────────────────────────────────────────────────────
-# Exposes the application pods as a stable network endpoint.
-# ClusterIP provides internal load balancing; use with an Ingress for external access.
+# Exposes the nginx pods as a stable network endpoint inside the cluster.
+# ─────────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Service
 metadata:
@@ -8,10 +8,9 @@ metadata:
   namespace: k8s-platform
   labels:
     app: k8s-platform-app
-    monitored: "true"
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "5000"
+    prometheus.io/port: "80"
     prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
@@ -20,11 +19,11 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 5000
+      targetPort: 80
       protocol: TCP
 
 ---
-# ── NodePort Service (for local/dev access) ───────────────────────────────────
+# ── NodePort Service (for local/Minikube access) ──────────────────────────────
 apiVersion: v1
 kind: Service
 metadata:
@@ -40,6 +39,6 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 5000
+      targetPort: 80
       nodePort: 30080
       protocol: TCP
