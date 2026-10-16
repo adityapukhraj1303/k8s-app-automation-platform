@@ -12,13 +12,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Flask-3.0-000000?style=for-the-badge&logo=flask&logoColor=white"/>
+  <img src="https://img.shields.io/badge/nginx-1.25-009639?style=for-the-badge&logo=nginx&logoColor=white"/>
+  <img src="https://img.shields.io/badge/HTML5-Static_Site-E34F26?style=for-the-badge&logo=html5&logoColor=white"/>
   <img src="https://img.shields.io/badge/HPA-Auto--Scaling-brightgreen?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/Zero--Downtime-Deployment-blue?style=for-the-badge"/>
 </p>
 
-> **A production-grade DevOps platform — containerized Flask app with multi-replica Kubernetes deployment, automated CI/CD via Jenkins + Ansible, and real-time monitoring with Prometheus + Grafana.**
+> **A production-grade DevOps platform — containerized static HTML/CSS app served by nginx, deployed with multiple replicas on Linux hosts using Kubernetes, automated via Jenkins + Ansible, and monitored with Prometheus + Grafana.**
 
 </div>
 
@@ -39,7 +39,7 @@ docker compose up --build
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| **Flask App** | http://localhost:5000 | — |
+| **App (nginx)** | http://localhost:8080 | — |
 | **Prometheus** | http://localhost:9090 | — |
 | **Grafana** | http://localhost:3000 | admin / admin123 |
 
@@ -70,7 +70,7 @@ chmod +x scripts/deploy-local.sh
 # Point Docker to Minikube's daemon (builds image inside Minikube)
 eval $(minikube docker-env)
 
-# Build the image
+# Build the nginx image
 docker build -t k8s-platform-app:latest ./app
 
 # Apply all Kubernetes manifests
@@ -122,7 +122,7 @@ kubectl port-forward svc/grafana 3000:3000 -n monitoring
 
 ## 🎯 Overview
 
-This platform demonstrates a **complete DevOps lifecycle** for containerized applications — from source code to production deployment — leveraging cloud-native tools and automation best practices.
+This platform demonstrates a **complete DevOps lifecycle** for containerized applications — from source code to production deployment on Linux hosts — leveraging cloud-native tools and automation best practices.
 
 **Developed in 2026 as part of a comprehensive DevOps engineering project.**
 
@@ -130,8 +130,9 @@ This platform demonstrates a **complete DevOps lifecycle** for containerized app
 
 | Feature | Implementation |
 |---------|---------------|
-| 🚀 **Scalable Deployment** | Kubernetes Deployments with zero-downtime rolling updates |
-| 🤖 **Full CI/CD Automation** | Jenkins pipeline: Build → Test → Security Scan → Push → Deploy |
+| 🚀 **Scalable Deployment** | Kubernetes Deployments with zero-downtime rolling updates on Linux hosts |
+| 🐳 **Lightweight Container** | nginx serving static HTML/CSS — minimal image, fast startup |
+| 🤖 **Full CI/CD Automation** | Jenkins pipeline: Build → Security Scan → Push → Deploy |
 | ⚙️ **Config Management** | Ansible playbooks automating environment setup and deployments |
 | 🔐 **Production Hardening** | ConfigMaps, Secrets, liveness/readiness/startup probes |
 | 📈 **Auto-Scaling** | HPA scaling 2→10 replicas based on CPU/Memory metrics |
@@ -150,32 +151,31 @@ This platform demonstrates a **complete DevOps lifecycle** for containerized app
                     ┌─────────────▼─────────────┐
                     │      Jenkins Pipeline       │
                     │  1. Checkout Code           │
-                    │  2. Unit Tests (pytest)     │
-                    │  3. Docker Build            │
-                    │  4. Trivy Security Scan     │
-                    │  5. Push to Registry        │
-                    │  6. Ansible Config          │
-                    │  7. kubectl Deploy          │
-                    │  8. Smoke Tests             │
+                    │  2. Docker Build            │
+                    │  3. Trivy Security Scan     │
+                    │  4. Push to Registry        │
+                    │  5. Ansible Config          │
+                    │  6. kubectl Deploy          │
+                    │  7. Smoke Tests             │
                     └─────────────────────────────┘
                                   │
               ┌───────────────────▼───────────────────┐
-              │          Kubernetes Cluster             │
+              │       Kubernetes Cluster (Linux)        │
               │                                        │
               │  Namespace: k8s-platform               │
               │  ┌──────────────────────────────────┐  │
               │  │ Deployment (3 replicas, HPA 2-10) │  │
               │  │  Pod1 │ Pod2 │ Pod3               │  │
-              │  │  Flask App + /metrics endpoint    │  │
+              │  │  nginx — HTML/CSS static site     │  │
               │  └────────────┬─────────────────────┘  │
               │               │                         │
               │  ┌────────────▼─────────────────────┐  │
               │  │    Service (ClusterIP + NodePort) │  │
-              │  └────────────────────────────────── ┘  │
+              │  └──────────────────────────────────┘  │
               │                                        │
               │  Namespace: monitoring                 │
-              │  Prometheus ◄── scrapes /metrics       │
-              │  Grafana ◄── queries Prometheus        │
+              │  Prometheus ◄── scrapes /health        │
+              │  Grafana    ◄── queries Prometheus     │
               └────────────────────────────────────────┘
 ```
 
@@ -184,34 +184,32 @@ This platform demonstrates a **complete DevOps lifecycle** for containerized app
 ## 🛠️ Tech Stack
 
 | Tool | Version | Purpose |
-|------|---------|---------| 
-| **Kubernetes** | 1.29 | Container orchestration |
+|------|---------|---------|
+| **Kubernetes** | 1.29 | Container orchestration on Linux hosts |
 | **Docker** | 24.0 | Container runtime & image building |
+| **nginx** | 1.25 | Lightweight web server for static HTML/CSS |
 | **Jenkins** | LTS | CI/CD pipeline automation |
 | **Ansible** | 2.16 | Configuration management & deployment |
 | **Prometheus** | 2.51 | Metrics collection & alerting |
 | **Grafana** | 10.3 | Metrics visualization & dashboards |
-| **Python / Flask** | 3.11 / 3.0 | Containerized web application |
-| **Gunicorn** | 22.0 | Production WSGI server |
 
 ---
 
 ## 🌟 Project Highlights
 
-### 1. 🚀 Scalable Kubernetes Deployment
+### 1. 🚀 Multi-Replica Kubernetes Deployment on Linux
+- **3 replicas** deployed using YAML manifests (Deployments, Services, ConfigMaps, Secrets)
 - **Rolling updates** with `maxSurge: 1` and `maxUnavailable: 0` — zero downtime
-- **Pod anti-affinity** distributes pods across nodes for resilience
-- **Multi-stage Docker build** reduces image size by ~60%
-- **Non-root container** execution for security
+- **Pod anti-affinity** distributes pods across different Linux nodes for resilience
 
 ### 2. ⚙️ Ansible + Jenkins Automation
 - Ansible **reduces manual deployment effort by ~90%** with idempotent playbooks
-- Jenkins pipeline: Build → Unit Test → Security Scan → Push → Ansible → K8s Deploy → Smoke Test
+- Jenkins pipeline: Build → Security Scan → Push → Ansible → K8s Deploy → Smoke Test
 - **Automatic rollback** on pipeline failure via `kubectl rollout undo`
 
 ### 3. 🔐 Production-Ready Kubernetes Configuration
 ```
-ConfigMaps  → Non-sensitive app config (env, ports, log levels)
+ConfigMaps  → Non-sensitive app config (env vars, server info, log levels)
 Secrets     → Base64-encoded credentials (DB password, API keys)
 Liveness    → /health endpoint — restart unresponsive pods
 Readiness   → /ready endpoint — only route traffic to ready pods
@@ -221,9 +219,9 @@ HPA         → CPU > 70% or Memory > 80% triggers auto-scale (2–10 pods)
 
 ### 4. 📊 Prometheus + Grafana Monitoring
 - **Kubernetes service discovery** via pod annotations
-- **Custom Flask metrics**: request count, latency histograms, active connections
 - **Alert rules**: App down, high CPU, frequent pod restarts, node disk pressure
-- **Grafana dashboards**: request rate, P50/P95/P99 latency, HPA replica count, CPU/memory per pod
+- **Grafana dashboards**: HPA replica count, CPU/memory per pod, node health
+- Used to **troubleshoot application and infrastructure issues** in real time
 
 ---
 
@@ -233,13 +231,13 @@ HPA         → CPU > 70% or Memory > 80% triggers auto-scale (2–10 pods)
 k8s-app-automation-platform/
 ├── docker-compose.yaml               # ← One-command local run
 ├── app/
-│   ├── app.py                        # Flask app with /health, /ready, /metrics
-│   ├── requirements.txt
-│   └── Dockerfile                    # Multi-stage build
+│   ├── index.html                    # Static HTML/CSS web application
+│   ├── nginx.conf                    # nginx config with /health & /ready endpoints
+│   └── Dockerfile                    # nginx:alpine image
 ├── kubernetes/
 │   ├── namespace.yaml
 │   ├── deployment.yaml               # 3 replicas, rolling update, health probes
-│   ├── service.yaml                  # ClusterIP + NodePort
+│   ├── service.yaml                  # ClusterIP + NodePort (port 80)
 │   ├── hpa.yaml                      # HPA: 2–10 pods on CPU/Memory
 │   ├── configmap.yaml
 │   ├── secret.yaml
@@ -249,21 +247,20 @@ k8s-app-automation-platform/
 ├── ansible/
 │   ├── inventory/hosts.ini
 │   └── playbooks/
-│       ├── setup-environment.yml     # Bootstrap nodes
+│       ├── setup-environment.yml     # Bootstrap Linux nodes with Docker + K8s
 │       ├── deploy-app.yml            # Deploy to Kubernetes
-│       └── configure-monitoring.yml  # Prometheus + Grafana
+│       └── configure-monitoring.yml  # Deploy Prometheus + Grafana
 ├── monitoring/
 │   ├── prometheus/
 │   │   ├── prometheus.yaml           # K8s deployment
 │   │   ├── prometheus-config.yaml    # Scrape configs + alert rules
-│   │   └── prometheus-local.yaml     # ← Local Docker Compose config
+│   │   └── prometheus-local.yaml     # Local Docker Compose config
 │   └── grafana/
 │       ├── grafana.yaml              # K8s deployment
-│       └── provisioning/             # ← Auto-configured datasource
+│       └── provisioning/             # Auto-configured datasource
 └── scripts/
-    ├── deploy-local.sh               # ← One-command K8s deploy (Linux/Mac)
-    ├── deploy-local.ps1              # ← One-command K8s deploy (Windows)
-    ├── build-push-ecr.sh             # Build & push to ECR (CI/CD)
+    ├── deploy-local.sh               # One-command K8s deploy (Linux/Mac)
+    ├── deploy-local.ps1              # One-command K8s deploy (Windows)
     ├── deploy.sh                     # Deploy to Kubernetes
     └── rollback.sh                   # Rollback to previous revision
 ```
@@ -274,17 +271,19 @@ k8s-app-automation-platform/
 
 ```
 ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│  Checkout   │──►│ Unit Tests  │──►│Docker Build │──►│Security Scan│
-│  (GitHub)   │   │  (pytest)   │   │(multi-stage)│   │  (Trivy)    │
-└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
-                                                                │
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌───────▼─────┐
-│  Monitoring │◄──│   Deploy    │◄──│   Ansible   │◄──│  Push Image │
-│   Config    │   │    K8s      │   │  Env Setup  │   │             │
-└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+│  Checkout   │──►│Docker Build │──►│Security Scan│──►│ Push Image  │
+│  (GitHub)   │   │(nginx:alpine│   │  (Trivy)    │   │             │
+└─────────────┘   └─────────────┘   └─────────────┘   └──────┬──────┘
+                                                              │
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐          │
+│  Monitoring │◄──│   Deploy    │◄──│   Ansible   │◄─────────┘
+│   Config    │   │    K8s      │   │  Env Setup  │
+└─────────────┘   └─────────────┘   └─────────────┘
        │                 │
        └────────────────►└──► Smoke Tests ──► Slack Notification
 ```
+
+**Trigger**: `git push` to `main` branch via GitHub webhook
 
 ---
 
@@ -307,31 +306,32 @@ chmod +x scripts/rollback.sh
 
 ## 📊 Monitoring Stack
 
-### Prometheus Metrics
-- **Application**: `app_request_count_total`, `app_request_latency_seconds`, `app_active_connections`
-- **Kubernetes**: Pod restarts, node status, CPU/memory utilization
+### Prometheus Metrics Collected
+- **Kubernetes**: Pod restarts, replica count, node status
+- **System**: CPU/memory utilization, disk I/O via Node Exporter
 
-### Alert Rules
+### Alert Rules Configured
 | Alert | Condition | Severity |
 |-------|-----------|----------|
 | `AppDown` | App unreachable for 1 min | 🔴 Critical |
 | `AppHighCPU` | CPU > 80% for 5 min | 🟡 Warning |
 | `PodRestartingFrequently` | >5 restarts in 1h | 🟡 Warning |
 | `HighMemoryUsage` | Memory > 85% of limit | 🟡 Warning |
+| `NodeDiskPressure` | Node under disk pressure | 🔴 Critical |
 
-### Grafana Dashboards
-- Request rate (req/s) over time
-- P50/P95/P99 latency percentiles
-- Pod replica count vs HPA target
+### Grafana Dashboard Panels
+- HPA replica count vs target
 - CPU & Memory utilization per pod
+- Pod restart count over time
+- Node-level disk and network metrics
 
 ---
 
 ## ⚙️ Ansible Automation
 
 | Playbook | Purpose |
-|----------|---------| 
-| `setup-environment.yml` | Install Docker, kubectl on all nodes |
+|----------|---------|
+| `setup-environment.yml` | Install Docker, kubectl on all Linux nodes |
 | `deploy-app.yml` | Deploy/update application on Kubernetes |
 | `configure-monitoring.yml` | Deploy Prometheus + Grafana |
 
@@ -352,6 +352,6 @@ ansible-playbook -i ansible/inventory/hosts.ini \
 
 **Built with ❤️ by [Aditya Pukhraj](https://github.com/adityapukhraj1303)**
 
-*Kubernetes · Docker · Jenkins · Ansible · Prometheus · Grafana · 2026*
+*Kubernetes · Docker · nginx · Jenkins · Ansible · Linux · Prometheus · Grafana · 2026*
 
 </div>
